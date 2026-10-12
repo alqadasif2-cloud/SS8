@@ -1,0 +1,94 @@
+name: Build Android APK & Web App
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-web:
+    name: Build Web App
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: TypeScript Lint & Typecheck
+        run: npm run lint
+
+      - name: Build Web Production Bundle
+        run: npm run build
+
+      - name: Upload Web Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sami-tracker-web-dist-v1.3.0
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Locate Android Gradle Wrapper
+        id: android
+        shell: bash
+        run: |
+          set -e
+          if [ -f "./gradlew" ]; then
+            echo "project_dir=." >> "$GITHUB_OUTPUT"
+          elif [ -f "./android/gradlew" ]; then
+            echo "project_dir=android" >> "$GITHUB_OUTPUT"
+          elif [ -f "./app/gradlew" ]; then
+            echo "project_dir=app" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::No gradlew found. This repository does not contain a Gradle Wrapper in the expected locations."
+            echo "Repository root contents:"
+            ls -la
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Android APK
+        working-directory: ${{ steps.android.outputs.project_dir }}
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sami-TradingChallenge-APK-v1.3.0
+          path: |
+            ${{ steps.android.outputs.project_dir }}/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 30
